@@ -1,8 +1,11 @@
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QTabWidget,
-    QLabel, QTextEdit, QPushButton, QLineEdit, QFileDialog, QMessageBox
+    QApplication, QWidget, QVBoxLayout, QTabWidget, QHBoxLayout,
+    QLabel, QTextEdit, QPushButton, QLineEdit, QFileDialog, QMessageBox,
+    QComboBox, QGroupBox, QGridLayout
 )
 import sys
+import json
+from encode import encode_jwt, create_default_payload, SUPPORTED_ALGORITHMS
 
 class CyberJWTGui(QWidget):
     def __init__(self):
@@ -51,9 +54,128 @@ class CyberJWTGui(QWidget):
     def encode_tab(self):
         tab = QWidget()
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("🚧 Encode functionality coming soon..."))
+
+        # Algorithm selection
+        algo_layout = QHBoxLayout()
+        algo_layout.addWidget(QLabel("Algorithm:"))
+        self.algorithm_combo = QComboBox()
+        self.algorithm_combo.addItems(SUPPORTED_ALGORITHMS)
+        algo_layout.addWidget(self.algorithm_combo)
+        algo_layout.addStretch()
+        layout.addLayout(algo_layout)
+
+        # Secret key
+        secret_layout = QHBoxLayout()
+        secret_layout.addWidget(QLabel("Secret Key:"))
+        self.secret_input = QLineEdit()
+        self.secret_input.setPlaceholderText("Enter secret key (leave empty for 'none' algorithm)")
+        secret_layout.addWidget(self.secret_input)
+        layout.addLayout(secret_layout)
+
+        # Payload section
+        payload_group = QGroupBox("JWT Payload")
+        payload_layout = QVBoxLayout()
+        
+        # Quick payload buttons
+        quick_btn_layout = QHBoxLayout()
+        default_payload_btn = QPushButton("Load Default Payload")
+        clear_payload_btn = QPushButton("Clear Payload")
+        default_payload_btn.clicked.connect(self.load_default_payload)
+        clear_payload_btn.clicked.connect(self.clear_payload)
+        quick_btn_layout.addWidget(default_payload_btn)
+        quick_btn_layout.addWidget(clear_payload_btn)
+        quick_btn_layout.addStretch()
+        payload_layout.addLayout(quick_btn_layout)
+
+        # Payload text area
+        self.payload_input = QTextEdit()
+        self.payload_input.setPlaceholderText('Enter JSON payload, e.g.:\n{\n  "sub": "user123",\n  "name": "John Doe",\n  "admin": true\n}')
+        self.payload_input.setMaximumHeight(150)
+        payload_layout.addWidget(self.payload_input)
+        
+        payload_group.setLayout(payload_layout)
+        layout.addWidget(payload_group)
+
+        # Encode button
+        encode_btn = QPushButton("🔐 Encode JWT")
+        encode_btn.clicked.connect(self.encode_jwt_token)
+        layout.addWidget(encode_btn)
+
+        # Output section
+        layout.addWidget(QLabel("Generated JWT:"))
+        self.jwt_output = QTextEdit()
+        self.jwt_output.setReadOnly(True)
+        self.jwt_output.setMaximumHeight(100)
+        layout.addWidget(self.jwt_output)
+
+        # Copy button
+        copy_btn = QPushButton("📋 Copy JWT")
+        copy_btn.clicked.connect(self.copy_jwt)
+        layout.addWidget(copy_btn)
+
         tab.setLayout(layout)
         return tab
+
+    def load_default_payload(self):
+        """Load a default JWT payload"""
+        default_payload = create_default_payload()
+        self.payload_input.setPlainText(json.dumps(default_payload, indent=2))
+
+    def clear_payload(self):
+        """Clear the payload input"""
+        self.payload_input.clear()
+
+    def encode_jwt_token(self):
+        """Encode JWT token using the current inputs"""
+        try:
+            # Get payload
+            payload_text = self.payload_input.toPlainText().strip()
+            if not payload_text:
+                QMessageBox.warning(self, "Error", "Please enter a payload.")
+                return
+
+            # Parse payload JSON
+            try:
+                payload = json.loads(payload_text)
+            except json.JSONDecodeError as e:
+                QMessageBox.warning(self, "JSON Error", f"Invalid JSON payload:\n{str(e)}")
+                return
+
+            # Get algorithm and secret
+            algorithm = self.algorithm_combo.currentText()
+            secret = self.secret_input.text()
+
+            # Validate secret for signed algorithms
+            if algorithm != 'none' and not secret:
+                reply = QMessageBox.question(
+                    self, "No Secret", 
+                    "No secret key provided. This will create an unsigned token. Continue?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if reply == QMessageBox.No:
+                    return
+
+            # Encode JWT
+            jwt_token = encode_jwt(payload, secret, algorithm)
+            
+            # Display result
+            self.jwt_output.setPlainText(jwt_token)
+            
+            # Show success message
+            QMessageBox.information(self, "Success", "JWT token generated successfully!")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to encode JWT:\n{str(e)}")
+
+    def copy_jwt(self):
+        """Copy JWT to clipboard"""
+        jwt_text = self.jwt_output.toPlainText()
+        if jwt_text:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(jwt_text)
+            QMessageBox.information(self, "Copied", "JWT copied to clipboard!")
+        else:
+            QMessageBox.warning(self, "No JWT", "No JWT token to copy.")
 
     def decode_tab(self):
         tab = QWidget()
@@ -75,3 +197,6 @@ def run_gui():
     window = CyberJWTGui()
     window.show()
     sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    run_gui()
