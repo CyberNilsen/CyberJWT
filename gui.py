@@ -55,7 +55,6 @@ class CyberJWTGui(QWidget):
         tab = QWidget()
         layout = QVBoxLayout()
 
-        # Algorithm selection
         algo_layout = QHBoxLayout()
         algo_layout.addWidget(QLabel("Algorithm:"))
         self.algorithm_combo = QComboBox()
@@ -64,7 +63,6 @@ class CyberJWTGui(QWidget):
         algo_layout.addStretch()
         layout.addLayout(algo_layout)
 
-        # Secret key
         secret_layout = QHBoxLayout()
         secret_layout.addWidget(QLabel("Secret Key:"))
         self.secret_input = QLineEdit()
@@ -72,11 +70,9 @@ class CyberJWTGui(QWidget):
         secret_layout.addWidget(self.secret_input)
         layout.addLayout(secret_layout)
 
-        # Payload section
         payload_group = QGroupBox("JWT Payload")
         payload_layout = QVBoxLayout()
         
-        # Quick payload buttons
         quick_btn_layout = QHBoxLayout()
         default_payload_btn = QPushButton("Load Default Payload")
         clear_payload_btn = QPushButton("Clear Payload")
@@ -87,7 +83,6 @@ class CyberJWTGui(QWidget):
         quick_btn_layout.addStretch()
         payload_layout.addLayout(quick_btn_layout)
 
-        # Payload text area
         self.payload_input = QTextEdit()
         self.payload_input.setPlaceholderText('Enter JSON payload, e.g.:\n{\n  "sub": "user123",\n  "name": "John Doe",\n  "admin": true\n}')
         self.payload_input.setMaximumHeight(150)
@@ -96,19 +91,16 @@ class CyberJWTGui(QWidget):
         payload_group.setLayout(payload_layout)
         layout.addWidget(payload_group)
 
-        # Encode button
         encode_btn = QPushButton("🔐 Encode JWT")
         encode_btn.clicked.connect(self.encode_jwt_token)
         layout.addWidget(encode_btn)
 
-        # Output section
         layout.addWidget(QLabel("Generated JWT:"))
         self.jwt_output = QTextEdit()
         self.jwt_output.setReadOnly(True)
         self.jwt_output.setMaximumHeight(100)
         layout.addWidget(self.jwt_output)
 
-        # Copy button
         copy_btn = QPushButton("📋 Copy JWT")
         copy_btn.clicked.connect(self.copy_jwt)
         layout.addWidget(copy_btn)
@@ -128,24 +120,20 @@ class CyberJWTGui(QWidget):
     def encode_jwt_token(self):
         """Encode JWT token using the current inputs"""
         try:
-            # Get payload
             payload_text = self.payload_input.toPlainText().strip()
             if not payload_text:
                 QMessageBox.warning(self, "Error", "Please enter a payload.")
                 return
 
-            # Parse payload JSON
             try:
                 payload = json.loads(payload_text)
             except json.JSONDecodeError as e:
                 QMessageBox.warning(self, "JSON Error", f"Invalid JSON payload:\n{str(e)}")
                 return
 
-            # Get algorithm and secret
             algorithm = self.algorithm_combo.currentText()
             secret = self.secret_input.text()
 
-            # Validate secret for signed algorithms
             if algorithm != 'none' and not secret:
                 reply = QMessageBox.question(
                     self, "No Secret", 
@@ -155,13 +143,10 @@ class CyberJWTGui(QWidget):
                 if reply == QMessageBox.No:
                     return
 
-            # Encode JWT
             jwt_token = encode_jwt(payload, secret, algorithm)
             
-            # Display result
             self.jwt_output.setPlainText(jwt_token)
             
-            # Show success message
             QMessageBox.information(self, "Success", "JWT token generated successfully!")
 
         except Exception as e:
