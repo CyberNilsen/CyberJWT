@@ -41,30 +41,24 @@ def encode_jwt(payload, secret='', algorithm='HS256', extra_headers=None):
     Returns:
         str: Complete JWT token
     """
-    # Default header
     header = {
         'typ': 'JWT',
         'alg': algorithm
     }
     
-    # Add extra headers if provided
     if extra_headers:
         header.update(extra_headers)
     
-    # Encode header and payload
     encoded_header = base64_url_encode(header)
     encoded_payload = base64_url_encode(payload)
     
-    # Create header.payload string
     header_payload = f"{encoded_header}.{encoded_payload}"
     
-    # Create signature
     if algorithm == 'none':
         signature = ''
     else:
         signature = create_signature(header_payload, secret, algorithm)
     
-    # Return complete JWT
     if signature:
         return f"{header_payload}.{signature}"
     else:
@@ -76,13 +70,13 @@ def create_default_payload(subject='user', issuer='cyberjwt', audience='api',
     now = datetime.utcnow()
     
     payload = {
-        'iss': issuer,  # Issuer
-        'sub': subject,  # Subject
-        'aud': audience,  # Audience
-        'exp': int((now + timedelta(hours=expiration_hours)).timestamp()),  # Expiration
-        'nbf': int((now + timedelta(minutes=not_before_minutes)).timestamp()),  # Not Before
-        'iat': int(now.timestamp()),  # Issued At
-        'jti': f"jwt-{int(now.timestamp())}"  # JWT ID
+        'iss': issuer,  
+        'sub': subject,  
+        'aud': audience,  
+        'exp': int((now + timedelta(hours=expiration_hours)).timestamp()),  
+        'nbf': int((now + timedelta(minutes=not_before_minutes)).timestamp()),  
+        'iat': int(now.timestamp()),  
+        'jti': f"jwt-{int(now.timestamp())}"  
     }
     
     return payload
@@ -92,7 +86,6 @@ def validate_payload(payload):
     if not isinstance(payload, dict):
         return False, "Payload must be a dictionary"
     
-    # Check for valid JSON serializable content
     try:
         json.dumps(payload)
     except (TypeError, ValueError) as e:
@@ -100,10 +93,8 @@ def validate_payload(payload):
     
     return True, "Valid payload"
 
-# Common algorithm options
 SUPPORTED_ALGORITHMS = ['HS256', 'none']
 
-# Common header options
 COMMON_HEADERS = {
     'typ': 'JWT',
     'cty': 'application/json'
