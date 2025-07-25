@@ -1,11 +1,13 @@
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QTabWidget, QHBoxLayout,
     QLabel, QTextEdit, QPushButton, QLineEdit, QFileDialog, QMessageBox,
-    QComboBox, QGroupBox, QGridLayout
+    QComboBox, QGroupBox, QGridLayout, QCheckBox
 )
 import sys
 import json
 from encode import encode_jwt, create_default_payload, SUPPORTED_ALGORITHMS
+from decode import decode_jwt, format_decode_output
+
 
 class CyberJWTGui(QWidget):
     def __init__(self):
@@ -165,9 +167,135 @@ class CyberJWTGui(QWidget):
     def decode_tab(self):
         tab = QWidget()
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("🚧 Decode functionality coming soon..."))
+
+        # JWT input section
+        layout.addWidget(QLabel("JWT Token:"))
+        self.decode_jwt_input = QLineEdit()
+        self.decode_jwt_input.setPlaceholderText("Paste JWT token here...")
+        layout.addWidget(self.decode_jwt_input)
+
+        # Secret key section (for signature verification)
+        secret_layout = QHBoxLayout()
+        secret_layout.addWidget(QLabel("Secret Key (optional):"))
+        self.decode_secret_input = QLineEdit()
+        self.decode_secret_input.setPlaceholderText("Enter secret key for signature verification")
+        self.decode_secret_input.setEchoMode(QLineEdit.Password)  # Hide secret
+        secret_layout.addWidget(self.decode_secret_input)
+        
+        # Toggle to show/hide secret
+        self.show_secret_btn = QPushButton("👁")
+        self.show_secret_btn.setMaximumWidth(30)
+        self.show_secret_btn.clicked.connect(self.toggle_secret_visibility)
+        secret_layout.addWidget(self.show_secret_btn)
+        
+        layout.addLayout(secret_layout)
+
+        # Options section
+        options_group = QGroupBox("Verification Options")
+        options_layout = QGridLayout()
+        
+        self.verify_signature_cb = QCheckBox("Verify Signature")
+        self.verify_signature_cb.setChecked(True)
+        self.verify_expiration_cb = QCheckBox("Check Expiration")
+        self.verify_expiration_cb.setChecked(True)
+        
+        options_layout.addWidget(self.verify_signature_cb, 0, 0)
+        options_layout.addWidget(self.verify_expiration_cb, 0, 1)
+        
+        options_group.setLayout(options_layout)
+        layout.addWidget(options_group)
+
+        # Decode button
+        decode_btn = QPushButton("🔓 Decode JWT")
+        decode_btn.clicked.connect(self.decode_jwt_token)
+        layout.addWidget(decode_btn)
+
+        # Output section
+        layout.addWidget(QLabel("Decoded JWT:"))
+        self.decode_output = QTextEdit()
+        self.decode_output.setReadOnly(True)
+        layout.addWidget(self.decode_output)
+
+        # Action buttons
+        button_layout = QHBoxLayout()
+        
+        copy_decoded_btn = QPushButton("📋 Copy Output")
+        copy_decoded_btn.clicked.connect(self.copy_decoded_output)
+        button_layout.addWidget(copy_decoded_btn)
+        
+        clear_decode_btn = QPushButton("🗑 Clear")
+        clear_decode_btn.clicked.connect(self.clear_decode_output)
+        button_layout.addWidget(clear_decode_btn)
+        
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+
         tab.setLayout(layout)
         return tab
+
+    def toggle_secret_visibility(self):
+        """Toggle secret key visibility"""
+        if self.decode_secret_input.echoMode() == QLineEdit.Password:
+            self.decode_secret_input.setEchoMode(QLineEdit.Normal)
+            self.show_secret_btn.setText("🙈")
+        else:
+            self.decode_secret_input.setEchoMode(QLineEdit.Password)
+            self.show_secret_btn.setText("👁")
+
+    def decode_jwt_token(self):
+        """Decode JWT token"""
+        token = self.decode_jwt_input.text().strip()
+        
+        if not token:
+            QMessageBox.warning(self, "Error", "Please enter a JWT token.")
+            return
+        
+        try:
+            secret = self.decode_secret_input.text()
+            verify_signature = self.verify_signature_cb.isChecked()
+            verify_expiration = self.verify_expiration_cb.isChecked()
+            
+            # Decode the JWT
+            result = decode_jwt(
+                token=token,
+                secret=secret,
+                verify_signature=verify_signature,
+                verify_expiration=verify_expiration
+            )
+            
+            # Format and display the output
+            formatted_output = format_decode_output(result)
+            self.decode_output.setPlainText(formatted_output)
+            
+            # Show summary message
+            if result['valid_structure']:
+                if result['errors']:
+                    QMessageBox.warning(self, "Decoded with Issues", 
+                                      f"JWT decoded but has issues:\n" + "\n".join(result['errors']))
+                else:
+                    QMessageBox.information(self, "Success", "JWT decoded successfully!")
+            else:
+                QMessageBox.critical(self, "Decode Failed", 
+                                   f"Failed to decode JWT:\n" + "\n".join(result['errors']))
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Unexpected error during decoding:\n{str(e)}")
+
+    def copy_decoded_output(self):
+        """Copy decoded output to clipboard"""
+        output_text = self.decode_output.toPlainText()
+        if output_text:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(output_text)
+            QMessageBox.information(self, "Copied", "Decoded output copied to clipboard!")
+        else:
+            QMessageBox.warning(self, "No Output", "No decoded output to copy.")
+
+    def clear_decode_output(self):
+        """Clear all decode inputs and outputs"""
+        self.decode_jwt_input.clear()
+        self.decode_secret_input.clear()
+        self.decode_output.clear()
 
     def brute_tab(self):
         tab = QWidget()
