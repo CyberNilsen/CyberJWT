@@ -168,21 +168,18 @@ class CyberJWTGui(QWidget):
         tab = QWidget()
         layout = QVBoxLayout()
 
-        # JWT input section
         layout.addWidget(QLabel("JWT Token:"))
         self.decode_jwt_input = QLineEdit()
         self.decode_jwt_input.setPlaceholderText("Paste JWT token here...")
         layout.addWidget(self.decode_jwt_input)
 
-        # Secret key section (for signature verification)
         secret_layout = QHBoxLayout()
         secret_layout.addWidget(QLabel("Secret Key (optional):"))
         self.decode_secret_input = QLineEdit()
         self.decode_secret_input.setPlaceholderText("Enter secret key for signature verification")
-        self.decode_secret_input.setEchoMode(QLineEdit.Password)  # Hide secret
+        self.decode_secret_input.setEchoMode(QLineEdit.Password)  
         secret_layout.addWidget(self.decode_secret_input)
         
-        # Toggle to show/hide secret
         self.show_secret_btn = QPushButton("👁")
         self.show_secret_btn.setMaximumWidth(30)
         self.show_secret_btn.clicked.connect(self.toggle_secret_visibility)
@@ -190,7 +187,6 @@ class CyberJWTGui(QWidget):
         
         layout.addLayout(secret_layout)
 
-        # Options section
         options_group = QGroupBox("Verification Options")
         options_layout = QGridLayout()
         
@@ -205,18 +201,15 @@ class CyberJWTGui(QWidget):
         options_group.setLayout(options_layout)
         layout.addWidget(options_group)
 
-        # Decode button
         decode_btn = QPushButton("🔓 Decode JWT")
         decode_btn.clicked.connect(self.decode_jwt_token)
         layout.addWidget(decode_btn)
 
-        # Output section
         layout.addWidget(QLabel("Decoded JWT:"))
         self.decode_output = QTextEdit()
         self.decode_output.setReadOnly(True)
         layout.addWidget(self.decode_output)
 
-        # Action buttons
         button_layout = QHBoxLayout()
         
         copy_decoded_btn = QPushButton("📋 Copy Output")
@@ -255,7 +248,6 @@ class CyberJWTGui(QWidget):
             verify_signature = self.verify_signature_cb.isChecked()
             verify_expiration = self.verify_expiration_cb.isChecked()
             
-            # Decode the JWT
             result = decode_jwt(
                 token=token,
                 secret=secret,
@@ -263,11 +255,9 @@ class CyberJWTGui(QWidget):
                 verify_expiration=verify_expiration
             )
             
-            # Format and display the output
             formatted_output = format_decode_output(result)
             self.decode_output.setPlainText(formatted_output)
             
-            # Show summary message
             if result['valid_structure']:
                 if result['errors']:
                     QMessageBox.warning(self, "Decoded with Issues", 
