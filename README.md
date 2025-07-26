@@ -121,8 +121,9 @@ CyberJWT/
 ├── encode.py        # JWT encoding functionality  
 ├── decode.py        # JWT decoding and parsing
 ├── bruteforce.py    # Brute-force attack implementation
-├── main.py          # Command-line interface
+├── main.py          # Python file to start the program
 └── README.md        # This file
+└── .GITIGNORE        # What files to ignore when committing
 ```
 
 ## 🔧 Technical Details
@@ -171,7 +172,7 @@ Contributions are welcome! Please feel free to submit a Pull Request. Areas for 
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the [MIT License](LICENSE).
 
 ## 🔗 Resources
 
