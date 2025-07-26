@@ -123,7 +123,6 @@ CyberJWT/
 ├── bruteforce.py    # Brute-force attack implementation
 ├── main.py          # Python file to start the program
 └── README.md        # This file
-└── .GITIGNORE        # What files to ignore when committing
 ```
 
 ## 🔧 Technical Details
