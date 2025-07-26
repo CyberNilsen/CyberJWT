@@ -1,19 +1,61 @@
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QTabWidget, QHBoxLayout,
     QLabel, QTextEdit, QPushButton, QLineEdit, QFileDialog, QMessageBox,
-    QComboBox, QGroupBox, QGridLayout, QCheckBox
+    QComboBox, QGroupBox, QGridLayout, QCheckBox, QProgressBar,
+    QRadioButton, QButtonGroup, QSpinBox
 )
+from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 import sys
 import json
+import threading
 from encode import encode_jwt, create_default_payload, SUPPORTED_ALGORITHMS
 from decode import decode_jwt, format_decode_output
+from bruteforce import JWTBruteforcer, format_time, estimate_wordlist_size
+
+
+class BruteforceThread(QThread):
+    progress_update = pyqtSignal(dict)
+    result_ready = pyqtSignal(dict)
+    
+    def __init__(self, bruteforcer, token, method, wordlist_path=None):
+        super().__init__()
+        self.bruteforcer = bruteforcer
+        self.token = token
+        self.method = method
+        self.wordlist_path = wordlist_path
+    
+    def run(self):
+        if self.method == 'wordlist':
+            self.bruteforcer.bruteforce_from_wordlist(
+                self.token, 
+                self.wordlist_path,
+                progress_callback=self.progress_callback,
+                result_callback=self.result_callback
+            )
+        elif self.method == 'common':
+            self.bruteforcer.bruteforce_common_secrets(
+                self.token,
+                progress_callback=self.progress_callback,
+                result_callback=self.result_callback
+            )
+    
+    def progress_callback(self, data):
+        self.progress_update.emit(data)
+    
+    def result_callback(self, data):
+        self.result_ready.emit(data)
 
 
 class CyberJWTGui(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CyberJWT GUI")
-        self.setMinimumSize(600, 500)
+        self.setMinimumSize(800, 600)
+        
+        self.bruteforcer = JWTBruteforcer()
+        self.brute_thread = None
+        self.update_timer = QTimer()
+        self.update_timer.timeout.connect(self.update_progress_display)
 
         layout = QVBoxLayout()
         tabs = QTabWidget()
@@ -290,9 +332,296 @@ class CyberJWTGui(QWidget):
     def brute_tab(self):
         tab = QWidget()
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("🚧 Brute-force functionality coming soon..."))
+        
+        token_group = QGroupBox("JWT Token")
+        token_layout = QVBoxLayout()
+        
+        self.brute_jwt_input = QLineEdit()
+        self.brute_jwt_input.setPlaceholderText("Paste JWT token to crack...")
+        token_layout.addWidget(self.brute_jwt_input)
+        
+        token_group.setLayout(token_layout)
+        layout.addWidget(token_group)
+        
+        method_group = QGroupBox("Attack Method")
+        method_layout = QVBoxLayout()
+        
+        self.method_group = QButtonGroup()
+        
+        self.common_radio = QRadioButton("Try Common Secrets")
+        self.common_radio.setChecked(True)
+        self.common_radio.toggled.connect(self.on_method_changed)
+        self.method_group.addButton(self.common_radio)
+        method_layout.addWidget(self.common_radio)
+        
+        self.wordlist_radio = QRadioButton("Wordlist Attack")
+        self.wordlist_radio.toggled.connect(self.on_method_changed)
+        self.method_group.addButton(self.wordlist_radio)
+        method_layout.addWidget(self.wordlist_radio)
+        
+        wordlist_layout = QHBoxLayout()
+        self.wordlist_path_input = QLineEdit()
+        self.wordlist_path_input.setPlaceholderText("Select wordlist file (e.g., rockyou.txt)")
+        self.wordlist_path_input.setEnabled(False)
+        
+        self.browse_wordlist_btn = QPushButton("Browse...")
+        self.browse_wordlist_btn.clicked.connect(self.browse_wordlist)
+        self.browse_wordlist_btn.setEnabled(False)
+        
+        wordlist_layout.addWidget(QLabel("Wordlist:"))
+        wordlist_layout.addWidget(self.wordlist_path_input)
+        wordlist_layout.addWidget(self.browse_wordlist_btn)
+        
+        method_layout.addLayout(wordlist_layout)
+        method_group.setLayout(method_layout)
+        layout.addWidget(method_group)
+        
+        controls_layout = QHBoxLayout()
+        
+        self.start_brute_btn = QPushButton("🚀 Start Attack")
+        self.start_brute_btn.clicked.connect(self.start_bruteforce)
+        controls_layout.addWidget(self.start_brute_btn)
+        
+        self.stop_brute_btn = QPushButton("⏹ Stop Attack")
+        self.stop_brute_btn.clicked.connect(self.stop_bruteforce)
+        self.stop_brute_btn.setEnabled(False)
+        controls_layout.addWidget(self.stop_brute_btn)
+        
+        controls_layout.addStretch()
+        layout.addLayout(controls_layout)
+        
+        progress_group = QGroupBox("Progress")
+        progress_layout = QVBoxLayout()
+        
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        progress_layout.addWidget(self.progress_bar)
+        
+        self.progress_label = QLabel("Ready to start attack...")
+        progress_layout.addWidget(self.progress_label)
+        
+        self.stats_label = QLabel("")
+        progress_layout.addWidget(self.stats_label)
+        
+        progress_group.setLayout(progress_layout)
+        layout.addWidget(progress_group)
+        
+        results_group = QGroupBox("Results")
+        results_layout = QVBoxLayout()
+        
+        self.brute_results = QTextEdit()
+        self.brute_results.setReadOnly(True)
+        self.brute_results.setMaximumHeight(200)
+        results_layout.addWidget(self.brute_results)
+        
+        results_btn_layout = QHBoxLayout()
+        
+        self.copy_secret_btn = QPushButton("📋 Copy Secret")
+        self.copy_secret_btn.clicked.connect(self.copy_found_secret)
+        self.copy_secret_btn.setEnabled(False)
+        results_btn_layout.addWidget(self.copy_secret_btn)
+        
+        self.clear_results_btn = QPushButton("🗑 Clear Results")
+        self.clear_results_btn.clicked.connect(self.clear_brute_results)
+        results_btn_layout.addWidget(self.clear_results_btn)
+        
+        results_btn_layout.addStretch()
+        results_layout.addLayout(results_btn_layout)
+        
+        results_group.setLayout(results_layout)
+        layout.addWidget(results_group)
+        
         tab.setLayout(layout)
         return tab
+    
+    def on_method_changed(self):
+        """Handle attack method change"""
+        is_wordlist = self.wordlist_radio.isChecked()
+        self.wordlist_path_input.setEnabled(is_wordlist)
+        self.browse_wordlist_btn.setEnabled(is_wordlist)
+    
+    def browse_wordlist(self):
+        """Browse for wordlist file"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Wordlist File",
+            "",
+            "Text Files (*.txt);;All Files (*)"
+        )
+        if file_path:
+            self.wordlist_path_input.setText(file_path)
+            
+            estimated_size = estimate_wordlist_size(file_path)
+            if estimated_size > 0:
+                self.progress_label.setText(f"Wordlist loaded: ~{estimated_size:,} entries")
+    
+    def start_bruteforce(self):
+        """Start bruteforce attack"""
+        token = self.brute_jwt_input.text().strip()
+        
+        if not token:
+            QMessageBox.warning(self, "Error", "Please enter a JWT token to crack.")
+            return
+        
+        if self.wordlist_radio.isChecked():
+            wordlist_path = self.wordlist_path_input.text().strip()
+            if not wordlist_path:
+                QMessageBox.warning(self, "Error", "Please select a wordlist file.")
+                return
+            
+            try:
+                with open(wordlist_path, 'r') as f:
+                    pass 
+            except FileNotFoundError:
+                QMessageBox.critical(self, "Error", f"Wordlist file not found: {wordlist_path}")
+                return
+            except PermissionError:
+                QMessageBox.critical(self, "Error", f"Permission denied accessing: {wordlist_path}")
+                return
+        
+        self.start_brute_btn.setEnabled(False)
+        self.stop_brute_btn.setEnabled(True)
+        self.copy_secret_btn.setEnabled(False)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        self.brute_results.clear()
+        
+        method = 'wordlist' if self.wordlist_radio.isChecked() else 'common'
+        wordlist_path = self.wordlist_path_input.text().strip() if method == 'wordlist' else None
+        
+        self.brute_thread = BruteforceThread(self.bruteforcer, token, method, wordlist_path)
+        self.brute_thread.progress_update.connect(self.on_brute_progress)
+        self.brute_thread.result_ready.connect(self.on_brute_result)
+        self.brute_thread.start()
+        
+        self.update_timer.start(500)  
+        
+        if method == 'common':
+            self.progress_label.setText("Trying common secrets...")
+        else:
+            self.progress_label.setText("Starting wordlist attack...")
+    
+    def stop_bruteforce(self):
+        """Stop bruteforce attack"""
+        if self.bruteforcer.is_running:
+            self.bruteforcer.stop_bruteforce()
+            self.progress_label.setText("Stopping attack...")
+        
+        if self.brute_thread and self.brute_thread.isRunning():
+            self.brute_thread.quit()
+            self.brute_thread.wait()
+        
+        self.update_timer.stop()
+        self.reset_brute_ui()
+    
+    def reset_brute_ui(self):
+        """Reset bruteforce UI to initial state"""
+        self.start_brute_btn.setEnabled(True)
+        self.stop_brute_btn.setEnabled(False)
+        self.progress_bar.setVisible(False)
+        if not self.bruteforcer.found_secret:
+            self.progress_label.setText("Attack stopped.")
+    
+    def on_brute_progress(self, progress_data):
+        """Handle progress updates from bruteforce thread"""
+        attempts = progress_data.get('attempts', 0)
+        current_secret = progress_data.get('current_secret', '')
+        elapsed_time = progress_data.get('elapsed_time', 0)
+        rate = progress_data.get('rate', 0)
+        
+        self.progress_label.setText(f"Trying: {current_secret}")
+        self.stats_label.setText(
+            f"Attempts: {attempts:,} | "
+            f"Rate: {rate:.1f}/sec | "
+            f"Time: {format_time(elapsed_time)}"
+        )
+    
+    def on_brute_result(self, result):
+        """Handle final result from bruteforce thread"""
+        self.update_timer.stop()
+        
+        if result['success']:
+            secret = result['secret']
+            attempts = result['attempts']
+            elapsed_time = result['elapsed_time']
+            rate = result['rate']
+            
+            self.brute_results.setPlainText(
+                f"🎉 SECRET FOUND!\n\n"
+                f"Secret: {secret}\n"
+                f"Attempts: {attempts:,}\n"
+                f"Time: {format_time(elapsed_time)}\n"
+                f"Rate: {rate:.1f} attempts/sec\n\n"
+                f"You can now use this secret to decode/verify the JWT token."
+            )
+            
+            self.progress_label.setText(f"SUCCESS! Secret found: {secret}")
+            self.copy_secret_btn.setEnabled(True)
+            
+            self.decode_jwt_input.setText(self.brute_jwt_input.text())
+            self.decode_secret_input.setText(secret)
+            
+            QMessageBox.information(
+                self, 
+                "Secret Found!", 
+                f"JWT secret cracked successfully!\n\nSecret: {secret}\n"
+                f"Attempts: {attempts:,}\nTime: {format_time(elapsed_time)}"
+            )
+        else:
+            error = result['error']
+            attempts = result.get('attempts', 0)
+            elapsed_time = result.get('elapsed_time', 0)
+            rate = result.get('rate', 0)
+            
+            self.brute_results.setPlainText(
+                f"❌ ATTACK FAILED\n\n"
+                f"Error: {error}\n"
+                f"Attempts: {attempts:,}\n"
+                f"Time: {format_time(elapsed_time)}\n"
+                f"Rate: {rate:.1f} attempts/sec\n\n"
+                f"Try a different wordlist or attack method."
+            )
+            
+            self.progress_label.setText(f"Failed: {error}")
+            
+            if attempts > 0: 
+                QMessageBox.warning(
+                    self,
+                    "Attack Failed",
+                    f"Could not crack JWT secret.\n\n{error}\n\n"
+                    f"Attempts: {attempts:,}\nTime: {format_time(elapsed_time)}"
+                )
+        
+        self.reset_brute_ui()
+    
+    def update_progress_display(self):
+        """Update progress display with current stats"""
+        if self.bruteforcer.is_running:
+            stats = self.bruteforcer.get_stats()
+            if stats['attempts'] > 0:
+                self.stats_label.setText(
+                    f"Attempts: {stats['attempts']:,} | "
+                    f"Rate: {stats['rate']:.1f}/sec | "
+                    f"Time: {format_time(stats['elapsed_time'])}"
+                )
+    
+    def copy_found_secret(self):
+        """Copy found secret to clipboard"""
+        if self.bruteforcer.found_secret is not None:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(self.bruteforcer.found_secret)
+            QMessageBox.information(self, "Copied", "Secret copied to clipboard!")
+        else:
+            QMessageBox.warning(self, "No Secret", "No secret found to copy.")
+    
+    def clear_brute_results(self):
+        """Clear bruteforce results and inputs"""
+        self.brute_jwt_input.clear()
+        self.wordlist_path_input.clear()
+        self.brute_results.clear()
+        self.progress_label.setText("Ready to start attack...")
+        self.stats_label.setText("")
+        self.copy_secret_btn.setEnabled(False)
 
 
 def run_gui():
